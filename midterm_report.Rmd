@@ -1,0 +1,25 @@
+---
+title: "Investigating indicators that can tell if the breast cancer is malignant project"
+author: 
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+library(klaR)
+library(tidyverse)
+library(AppliedPredictiveModeling)
+library(caret)
+library(glmnet)
+library(pROC)
+
+#read data and remove useless columns
+bc = read.csv("data.csv") %>% 
+        select(-contains("se"),-X, -id)
+```
+
+ 
