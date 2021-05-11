@@ -91,8 +91,7 @@ featurePlot(x = bc[, 2:11],
             plot = "density", pch = "|", 
             auto.key = list(columns = 2))
 ```
-The plots above show the distributions of all 30 predictors.  
-
+The plots above show the distributions of all 11 predictors.  
 
 ## Models:
 We have divided the dataset into the train set and the test set for further checking performance of the models.  
