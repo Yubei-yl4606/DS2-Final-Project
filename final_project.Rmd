@@ -96,3 +96,23 @@ plot(varImp(model.glmn, scale = FALSE), top = 10, main = "glmnet")
 roc.glmn$auc
 ```
 
+### Discriminant Analysis: LDA 
+
+```{r}
+# variance covariance matrix homogeneity check
+ggplot(dat, aes(x = fractal_dimension_se, y = concave.points_se, col = diagnosis)) + 
+    geom_point() + 
+    stat_ellipse() + 
+    scale_color_manual(values = c("blue", "red"))
+```
+
+Since 'fractal_dimension_se' and 'concave.points_se' are the two most important predictors, I select them to check the equal variance assumption. As we can see, the variance of diagnosis group Malignant is similar to group Benign because their patterns are equally dispersed. Moreover, LDA is pretty robust to normality assumption which is violated for many predictors, I decide to build linear discriminant analysis model using caret package. 
+
+```{r}
+set.seed(2021)
+model.lda <- train(x = dat[rowTrain,2:31],
+                   y = dat$diagnosis[rowTrain],
+                   method = "lda",
+                   metric = "ROC",
+                   trControl = ctrl)
+```
