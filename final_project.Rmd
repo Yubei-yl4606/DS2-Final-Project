@@ -16,6 +16,8 @@ library(AppliedPredictiveModeling)
 library(caret)
 library(glmnet)
 library(pROC)
+library(ranger)
+library(vip)
 library(corrplot)
 library(cowplot)
 library(gridGraphics)
@@ -24,11 +26,10 @@ library(gridGraphics)
 ```{r}
 #read data and remove useless columns
 bc = read.csv("data.csv") %>% 
-     select(diagnosis, symmetry_mean, contains(c("texture")), smoothness_mean, smoothness_worst, symmetry_se, 
-                  fractal_dimension_se, symmetry_worst, concavity_se, concave.points_se) %>% 
-        mutate_at(vars(diagnosis), as.factor)%>% 
-        mutate(diagnosis = if_else(diagnosis == "B", "Benign", "Malignant"),
-               diagnosis = factor(diagnosis))
+     select(diagnosis, symmetry_mean, contains(c("texture")), smoothness_mean, smoothness_worst,
+            symmetry_se, fractal_dimension_se, symmetry_worst, concavity_se, concave.points_se) %>%
+        mutate(diagnosis = if_else(diagnosis == "B", "Benign", "Malignant")) %>% 
+        mutate_at(vars(diagnosis), as.factor)
 ```
 ## Introduction:   
   Breast cancer is the cancer which develops from the breast tissue. It is the second leading cause of cancer death in women (the first leading cause of cancer death is the lung cancer). The death rate of the breast cancer is about 1 in 39 (American Cancer Society, 2021). The correct prediction of the cancer is benign or malignant could have significant impact on further decisions, such as further screening and preventative actions (Stark, Hart, Nartowt and Deng, 2019). In this report, we are trying to use about 11 different variables to predict the binary outcome (benign or malignant) of the diagnosis of breast cancer. We hope to build a model that performs well on predicting the nature of the breast cancer based on different predictors such as the mean radius, perimeter and the area of the tumor. 
@@ -122,6 +123,7 @@ indexTrain <- createDataPartition(y = bc$diagnosis, p = 0.80, list = FALSE)
 trainData <- bc[indexTrain, ]
 testData <- bc[-indexTrain, ]
 ```
+
 ### Lasso regression:   
 ```{r}
 x = as.matrix(trainData[2:12])
@@ -138,26 +140,148 @@ roc.lasso <- roc(testData$diagnosis, lasso.pred)
 roc.lasso$auc
 ```
 
-### Logistic regression with penalization: (待修改，就是glmnet的模型)
+### Logistic regression & Penalized logistic regression
+Since the outcome variable is binary and predictors are highly correlated with each other, we fit a logistic regression model and a penalized logistic regression model to the data.For logistic regression, the underlying assumption include: observations are independent of each other;little or no multicollinearity;linearity of independent variables and log odds. 
+
+```{r}
+# fit the glm model
+glm.fit <- glm(diagnosis ~ .,
+               data = trainData,
+               family = binomial(link = "logit"))
+```
+
+```{r}
+# check assumption of linear relationship between predictors and log odds/logit values（check发现violated了，最后可能就不放在report里了.....不然logistic的都做不了）
+
+# Predict the probability of malignant tumor
+probabilities <- predict(glm.fit, type = "response")
+
+## Select only numeric predictors
+mydata <- trainData %>%
+  dplyr::select_if(is.numeric) 
+predictors <- colnames(mydata)
+## Bind the logit and tidying the data for plot
+mydata <- mydata %>%
+  mutate(logit = log(probabilities/(1-probabilities))) %>%
+  gather(key = "predictors", value = "predictor.value", -logit)
+## Create the scatter plots:
+ggplot(mydata, aes(logit, predictor.value))+
+  geom_point(size = 0.5, alpha = 0.5) +
+  geom_smooth(method = "loess") + 
+  theme_bw() + 
+  facet_wrap(~predictors, scales = "free_y")
+```
+
+```{r, warning=FALSE}
+train.pred.prob1 <- predict(glm.fit, newdata = trainData,
+                          type = "response")
+
+train.pred1 <- rep("Benign", length(train.pred.prob1))
+train.pred1[train.pred.prob1>0.5] <- "Malignant"
+confusionMatrix(data = as.factor(train.pred1),
+                reference = trainData$diagnosis,
+                positive = "Malignant")
+```
+
+For training data, confusion matrix gives us an accuracy of 89.04%. The p-value of accuracy greater than no information rate is almost zero(2*e-16), thus the model is useful. Specificity(91.96%) is greater than sensitivity(84.12%). However, since data contains eleven predictors which is too many, we use regularization approach which help shrinkage unimportant coefficients by lambda, thus penalizes large number of predictors.
+
+### Logistic regression with penalization 
 ```{r}
 ctrl <- trainControl(method = "cv",
                      summaryFunction = twoClassSummary,
                      classProbs = TRUE)
 glmnGrid <- expand.grid(.alpha = seq(0, 1, length = 6),
-                        .lambda = exp(seq(-8, -2, length = 20)))
+                        .lambda = exp(seq(-12, -2, length = 20)))
 set.seed(1)
-model.glmn <- train(x = trainData[2:11],
+model.glmn <- train(x = trainData[2:12],
                     y = trainData$diagnosis,
                     method = "glmnet",
                     tuneGrid = glmnGrid,
                     metric = "ROC",
                     trControl = ctrl)
 plot(model.glmn, xTrans = function(x) log(x))
-glmn.pred = predict(model.glmn, newdata = testData, type = "prob")[,2]
-roc.glmn <- roc(testData$diagnosis, glmn.pred)
-plot(varImp(model.glmn, scale = FALSE), top = 10, main = "glmnet")
+glmn.pred = predict(model.glmn, newdata = trainData, type = "prob")[,2]
+roc.glmn <- roc(trainData$diagnosis, glmn.pred)
 roc.glmn$auc
 ```
+```{r}
+model.glmn$bestTune
+```
+
+For this penalized logistic regression model, the optimal tuning parameter being selected is 0.002. I picked this value by setting a tuning grid from -12 to -2 and then uses cross validation to get the parameter which gives the optimal ROC curve.
+
+For training data, the area under ROC curve is 0.9531. The coefficients of predictors below provide us some information on how predictors affect the outcome variable: malignant or not.
+
+```{r}
+coef(model.glmn$finalModel, model.glmn$bestTune$lambda)
+```
+
+For one unit increase in standard error of the number of concave portions on cell contour, the odds ratio of having malignant tumor increases by 4.44e+166 (computed by e^383.72). For one unit decrease in standard error of fractal dimension, the odds ratio of having malignant tumor increases by 8.94e+139(computed by e^322.25). If we relate the coefficients to relative variable importance, we can conclude that variability of concave points are the most influential variable, whereas the mean of texture is the least influential variable since it's coefficient is the closest to zero. 
+
+### KNN 
+```{r}
+set.seed(2021)
+ctrl <- trainControl(method = "cv",
+                     summaryFunction = twoClassSummary,
+                     classProbs = TRUE)
+model.knn <- train(x = bc[indexTrain,2:12],
+                   y = bc$diagnosis[indexTrain],
+                   method = "knn",
+                   preProcess = c("center","scale"),
+                   tuneGrid = data.frame(k = seq(1,200,by=5)),
+                   trControl = ctrl)
+model.knn$bestTune
+ggplot(model.knn, highlight = TRUE)
+knn.pred <- predict(model.knn, newdata = bc[-indexTrain,], type = "prob")[,2]
+roc.knn <- roc(bc$diagnosis[-indexTrain], knn.pred)
+plot(roc.knn, legacy.axes = TRUE, print.auc = TRUE) #AUC is 0.923
+plot(varImp(model.knn, scale = FALSE), top = 10, main = "knn")
+```
+
+### Random Forest Model 
+```{r}
+ctrl_3 <- trainControl(method = "cv",
+                     classProbs = TRUE, 
+                     summaryFunction = twoClassSummary)
+
+rf.grid <- expand.grid(mtry = 1:8,
+                       splitrule = "gini",
+                       min.node.size = seq(from = 2, to = 10, by = 2))
+set.seed(2021)
+rf.fit <- train(diagnosis ~ . , 
+                bc, 
+                subset = indexTrain,
+                method = "ranger",
+                tuneGrid = rf.grid,
+                metric = "ROC",
+                trControl = ctrl_3)
+
+ggplot(rf.fit, highlight = TRUE)
+
+rf.pred <- predict(rf.fit, newdata = bc[-indexTrain,], type = "prob")[,1]
+roc.rf <- roc(bc$diagnosis[-indexTrain], rf.pred)
+plot(roc.rf, legacy.axes = TRUE, print.auc = TRUE) #AUC is 0.954
+
+
+
+rf2.final.per <- ranger(diagnosis ~ . , 
+                        bc[indexTrain,], 
+                        mtry = rf.fit$bestTune[[1]], 
+                        min.node.size = rf.fit$bestTune[[3]],
+                        splitrule = "gini",
+                        importance = "permutation",
+                        scale.permutation.importance = TRUE) 
+
+barplot(sort(ranger::importance(rf2.final.per), decreasing = FALSE), 
+        las = 2, horiz = TRUE, cex.names = 0.7,
+        col = colorRampPalette(colors = c("cyan","blue"))(8))
+```
+
+### SVM (待写) 
+```{r}
+
+```
+
 
 ### Discriminant Analysis: LDA (yubei)
 
