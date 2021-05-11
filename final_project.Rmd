@@ -17,6 +17,8 @@ library(caret)
 library(glmnet)
 library(pROC)
 library(corrplot)
+library(cowplot)
+library(gridGraphics)
 ```
 
 ```{r}
@@ -25,7 +27,8 @@ bc = read.csv("data.csv") %>%
      select(diagnosis, symmetry_mean, contains(c("texture")), smoothness_mean, smoothness_worst, symmetry_se, 
                   fractal_dimension_se, symmetry_worst, concavity_se, concave.points_se) %>% 
         mutate_at(vars(diagnosis), as.factor)%>% 
-        mutate(diagnosis = if_else(diagnosis == "B", "Benign", "Malignant"))
+        mutate(diagnosis = if_else(diagnosis == "B", "Benign", "Malignant"),
+               diagnosis = factor(diagnosis))
 ```
 ## Introduction:   
   Breast cancer is the cancer which develops from the breast tissue. It is the second leading cause of cancer death in women (the first leading cause of cancer death is the lung cancer). The death rate of the breast cancer is about 1 in 39 (American Cancer Society, 2021). The correct prediction of the cancer is benign or malignant could have significant impact on further decisions, such as further screening and preventative actions (Stark, Hart, Nartowt and Deng, 2019). In this report, we are trying to use about 11 different variables to predict the binary outcome (benign or malignant) of the diagnosis of breast cancer. We hope to build a model that performs well on predicting the nature of the breast cancer based on different predictors such as the mean radius, perimeter and the area of the tumor. 
@@ -82,15 +85,33 @@ From the correlation plot above, we can see that among 11 predictors, some of th
 
 ### Plot of feature  
 ```{r}
-#Feature plot
+#Feature plot: normality assumption check
+theme1 <- transparentTheme(trans = .4)
+trellis.par.set(theme1)
 
-featurePlot(x = bc[, 2:11], 
+featurePlot(x = bc[, 2:7], 
             y = bc$diagnosis,
             scales = list(x = list(relation = "free"), 
                           y = list(relation = "free")),
             plot = "density", pch = "|", 
-            auto.key = list(columns = 2))
+            auto.key = list(columns = 2),
+            combine = FALSE)
+
+##不知道怎么改字体大小 就分开写了两段code
+#ggarrange(plots, nrow = 5)
+#plots <- lapply(X = plots, FUN = function(x) x + theme(plot.title = element_text(size = 10)))
+#cowplot::plot_grid(plotlist = plots, ncol=3)
 ```
+```{r}
+featurePlot(x = bc[, 8:12], 
+            y = bc$diagnosis,
+            scales = list(x = list(relation = "free"), 
+                          y = list(relation = "free")),
+            plot = "density", pch = "|", 
+            auto.key = list(columns = 2),
+            combine = FALSE)
+```
+
 The plots above show the distributions of all 11 predictors.  
 
 ## Models:
@@ -138,11 +159,11 @@ plot(varImp(model.glmn, scale = FALSE), top = 10, main = "glmnet")
 roc.glmn$auc
 ```
 
-### Discriminant Analysis: LDA 
+### Discriminant Analysis: LDA (yubei)
 
 ```{r}
 # variance covariance matrix homogeneity check
-ggplot(dat, aes(x = fractal_dimension_se, y = concave.points_se, col = diagnosis)) + 
+ggplot(bc, aes(x = fractal_dimension_se, y = concave.points_se, col = diagnosis)) + 
     geom_point() + 
     stat_ellipse() + 
     scale_color_manual(values = c("blue", "red"))
@@ -152,8 +173,8 @@ Since 'fractal_dimension_se' and 'concave.points_se' are the two most important 
 
 ```{r}
 set.seed(2021)
-model.lda <- train(x = dat[rowTrain,2:31],
-                   y = dat$diagnosis[rowTrain],
+model.lda <- train(x = trainData[2:12],
+                   y = trainData$diagnosis,
                    method = "lda",
                    metric = "ROC",
                    trControl = ctrl)
