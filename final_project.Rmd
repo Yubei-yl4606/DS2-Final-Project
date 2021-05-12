@@ -47,7 +47,7 @@ bc = read.csv("data.csv") %>%
 * symmetry  
 * fractal dimension  
   The mean, standard error and "worst" or largest (mean of the three largest values) of these features were computed for each image, resulting in 30 features. (Breast Cancer Wisconsin (Diagnostic) Data Set, 2021).       
-  However, we only kept 11 of the 30 variables from the original dataset, because some of the variables are too informative. As the result, we kept the standard error of concave points, the standard error of fractal dimension, the standard error of symmetry, the standard error of concavity, the standard error of texture, the mean of smoothness, the mean of symmetry, the mean of texture, the worst of symmetry, the worst of texture, and the worst of smoothness as our predictors. Since these predictors are related to tumors, but they are not very informative and would not determine whether the tumor is malignant or not by themselves, we believe these 11 variables are good predictors for our prediction.
+  However, we only kept 11 of the 30 variables from the original dataset, because some of the variables are too informative. As the result, we kept the standard error of concave points, the standard error of fractal dimension, the standard error of symmetry, the standard error of concavity, the standard error of texture, the mean of smoothness, the mean of symmetry, the mean of texture, the worst of symmetry, the worst of texture, and the worst of smoothness as our predictors. Since these predictors are related to tumors, but they are not very informative and would not determine whether the tumor is malignant or not by themselves, we believe these 11 variables are good predictors for our prediction. In addition, we also want to investigate how accurate we can predict when we only have partial and less related information.  
   For data tidying, we simply converted variables diagnosis from class character into class factor for further analysis. Then, we have checked the number of missing values, and luckily, there are 0 missing value in our data. Furthermore, we have converted the outcome benign as 0 and malignant as 1 for convenience. We separated the data into the training(80%) and the testing(20%) sets. 
 
 ## Explotary Analysis/Visulization:
@@ -124,22 +124,6 @@ trainData <- bc[indexTrain, ]
 testData <- bc[-indexTrain, ]
 ```
 
-### Lasso regression:   
-```{r}
-x = as.matrix(trainData[2:12])
-y = trainData$diagnosis
-set.seed(2021)
-cv.lasso <- cv.glmnet(x, y, 
-                      alpha = 1, 
-                      lambda = exp(seq(5, -5, length = 1000)),
-                      family = "binomial")
-cv.lasso$lambda.min
-coef = predict(cv.lasso, s = "lambda.min", type = "coefficients")
-lasso.pred = predict(cv.lasso, newx = as.matrix(testData[2:12]), s = "lambda.min", type = "response")
-roc.lasso <- roc(testData$diagnosis, lasso.pred)
-roc.lasso$auc
-```
-
 ### Logistic regression & Penalized logistic regression
 Since the outcome variable is binary and predictors are highly correlated with each other, we fit a logistic regression model and a penalized logistic regression model to the data.For logistic regression, the underlying assumption include: observations are independent of each other;little or no multicollinearity;linearity of independent variables and log odds. 
 
@@ -208,7 +192,7 @@ roc.glmn$auc
 model.glmn$bestTune
 ```
 
-For this penalized logistic regression model, the optimal tuning parameter being selected is 0.002. I picked this value by setting a tuning grid from -12 to -2 and then uses cross validation to get the parameter which gives the optimal ROC curve.
+For this penalized logistic regression model, the optimal tuning parameter being selected is 0.002. I picked this value by setting a tuning grid from exp(-12) to exp(-2) and then uses cross validation to get the parameter which gives the optimal ROC curve.
 
 For training data, the area under ROC curve is 0.9531. The coefficients of predictors below provide us some information on how predictors affect the outcome variable: malignant or not.
 
@@ -216,7 +200,28 @@ For training data, the area under ROC curve is 0.9531. The coefficients of predi
 coef(model.glmn$finalModel, model.glmn$bestTune$lambda)
 ```
 
-For one unit increase in standard error of the number of concave portions on cell contour, the odds ratio of having malignant tumor increases by 4.44e+166 (computed by e^383.72). For one unit decrease in standard error of fractal dimension, the odds ratio of having malignant tumor increases by 8.94e+139(computed by e^322.25). If we relate the coefficients to relative variable importance, we can conclude that variability of concave points are the most influential variable, whereas the mean of texture is the least influential variable since it's coefficient is the closest to zero. 
+For one unit increase in standard error of the number of concave portions on cell contour, the odds ratio of having malignant tumor increases by 4.44e+166 (computed by e^383.72). For one unit decrease in standard error of fractal dimension, the odds ratio of having malignant tumor increases by 8.94e+139(computed by e^322.25). If we relate the coefficients to relative variable importance, we can conclude that variability of concave points are the most influential variable, whereas the mean of texture is the least influential variable since it's coefficient is the closest to zero.   
+
+### Lasso regression:   
+  Since many predictors are highly correlated to each other, we also fit a LASSO regression. The assumption of lasso model is the linear relationship between predictors and the odds.
+```{r}
+x = as.matrix(trainData[2:12])
+y = trainData$diagnosis
+set.seed(2021)
+cv.lasso <- cv.glmnet(x, y, 
+                      alpha = 1, 
+                      lambda = exp(seq(5, -5, length = 1000)),
+                      family = "binomial")
+cv.lasso$lambda.min
+coef = predict(cv.lasso, s = "lambda.min", type = "coefficients")
+lasso.pred = predict(cv.lasso, newx = as.matrix(testData[2:12]), s = "lambda.min", type = "response")
+roc.lasso <- roc(testData$diagnosis, lasso.pred)
+roc.lasso$auc
+plot(roc.lasso, legacy.axes = TRUE, print.auc = TRUE)
+legend("bottomright", legend = "LASSO") 
+```
+  For this LASSO regression model, the optimal tuning parameter being selected is 0.0067. We picked this value by setting a tuning grid from exp(5) to exp(-5). In this model, the parameters of the mean of symmetry and the worst of smoothness have been reduced to 0. Besides, the AUC is 0.9202.        
+  For one unit increase in the mean of smoothness, there is an exp(58.797) increase in the odds ratio. For one unit increase in the standard error of symmetry, the is an exp(-96.616) decrease in the odds ratio. For one unit increase in the standard error of fractal dimension, the odds ratio decreases by exp(-287.63). For one unit increase in the standard error of concave points, the odds ratio increases by exp(319.33). Thus, we can conclude the standard error of concave points and the standard error of fractal dimension are the two most important variables.
 
 ### KNN 
 ```{r}
@@ -237,6 +242,29 @@ roc.knn <- roc(bc$diagnosis[-indexTrain], knn.pred)
 plot(roc.knn, legacy.axes = TRUE, print.auc = TRUE) #AUC is 0.923
 plot(varImp(model.knn, scale = FALSE), top = 10, main = "knn")
 ```
+
+### MARS
+  Since the model could be nonlinear, we also fit the MARS model besides the random forest. Since MARS is a non-parametric method, there is no assumption made between the outcome and predictors.  
+```{r}
+mars_grid <- expand.grid(degree = 1:3, 
+                         nprune = 2:20)
+tuned_mars <- train(
+  x = bc[indexTrain,2:12],
+  y = bc$diagnosis[indexTrain],
+  method = "earth",
+  trControl = ctrl,
+  tuneGrid = mars_grid)
+ggplot(tuned_mars)
+tuned_mars$bestTune
+coef_mars = coef(tuned_mars$finalModel) 
+plot(varImp(tuned_mars, scale = FALSE), top = 10, main = "mars")
+predict_mars = predict(tuned_mars, newdata = testData, type = "prob")
+roc_mars = roc(testData$diagnosis, predict_mars[,2])
+roc_mars$auc
+plot(roc_mars, legacy.axes = TRUE, print.auc = TRUE)
+legend("bottomright", legend = "MARS")
+```
+We use the tune grid which degree from 1 to 3 and prune from 2 to 20 to choose the model with least cross validation, and the tune with 8 prunes and 1 degree has been chosen. The worst of texture and the standard error of concave points are the two most important variables. The AUC for this model is 0.925.
 
 ### Random Forest Model 
 ```{r}
@@ -282,9 +310,8 @@ barplot(sort(ranger::importance(rf2.final.per), decreasing = FALSE),
 
 ```
 
-
-### Discriminant Analysis: LDA (yubei)
-
+### Discriminant Analysis: LDA  
+LDA model assumes the predictors are drawn from the normal distribution, and the LDA further assumes equality of covariances among the predictor variables.
 ```{r}
 # variance covariance matrix homogeneity check
 ggplot(bc, aes(x = fractal_dimension_se, y = concave.points_se, col = diagnosis)) + 
@@ -293,13 +320,16 @@ ggplot(bc, aes(x = fractal_dimension_se, y = concave.points_se, col = diagnosis)
     scale_color_manual(values = c("blue", "red"))
 ```
 
-Since 'fractal_dimension_se' and 'concave.points_se' are the two most important predictors, I select them to check the equal variance assumption. As we can see, the variance of diagnosis group Malignant is similar to group Benign because their patterns are equally dispersed. Moreover, LDA is pretty robust to normality assumption which is violated for many predictors, I decide to build linear discriminant analysis model using caret package. 
+Since 'fractal_dimension_se' and 'concave.points_se' are the two most important predictors, I select them to check the equal variance assumption. As we can see, the variance of diagnosis group Malignant is similar to group Benign because their patterns are equally dispersed. Moreover, LDA is pretty robust to normality assumption which is violated for many predictors, I decide to build linear discriminant analysis model using lda function. 
 
 ```{r}
 set.seed(2021)
-model.lda <- train(x = trainData[2:12],
-                   y = trainData$diagnosis,
-                   method = "lda",
-                   metric = "ROC",
-                   trControl = ctrl)
+lda = lda(diagnosis ~., data = bc)
+plot(lda)
+predict_lda = predict(lda, newdata = testData, type = "prob")
+roc_lda = roc(testData$diagnosis, predict_lda$posterior[,2])
+roc_lda$auc
+plot(roc_lda, legacy.axes = TRUE, print.auc = TRUE)
+legend("bottomright", legend = "LDA")
 ```
+The area under the ROC cureve is 0.936.    
