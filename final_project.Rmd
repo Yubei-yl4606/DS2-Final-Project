@@ -22,6 +22,7 @@ library(corrplot)
 library(cowplot)
 library(gridGraphics)
 library(lime)
+library(earth)
 ```
 
 ```{r}
@@ -376,4 +377,4 @@ roc_lda$auc
 plot(roc_lda, legacy.axes = TRUE, print.auc = TRUE)
 legend("bottomright", legend = "LDA")
 ```
-The area under the ROC cureve is 0.936.    
+The area under the ROC curve is 0.936.    
