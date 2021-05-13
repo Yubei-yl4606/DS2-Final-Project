@@ -414,3 +414,11 @@ The area under the ROC curve is 0.936.
 summary(resamples(list(GLM = model.glm, Elastic_net = model.glmn, KNN = model.knn, MARS = tuned_mars, RF = rf.fit, SVM = svmr.fit, LDA = model.lda, LASSO = model.lasso)))
 ```
 
+
+```{r, warning=FALSE}
+pred.rf <- predict(rf.fit, newdata = testData)
+confusionMatrix(data = pred.rf, 
+                reference = testData$diagnosis)
+```
+
+
