@@ -137,7 +137,7 @@ glm.fit <- glm(diagnosis ~ .,
 ```
 
 ```{r}
-# check assumption of linear relationship between predictors and log odds/logit values（check发现violated了，最后可能就不放在report里了.....不然logistic的都做不了）
+# check assumption of linear relationship between predictors and log odds/logit values）
 
 # Predict the probability of malignant tumor
 probabilities <- predict(glm.fit, type = "response")
@@ -208,30 +208,32 @@ For one unit increase in standard error of the number of concave portions on cel
 ### Lasso regression:   
   Since many predictors are highly correlated to each other, we also fit a LASSO regression. The assumption of lasso model is the linear relationship between predictors and the odds.
 ```{r}
+ctrl <- trainControl(method = "cv",
+                     summaryFunction = twoClassSummary,
+                     classProbs = TRUE)
 x = as.matrix(trainData[2:12])
 y = trainData$diagnosis
 set.seed(2021)
-cv.lasso <- cv.glmnet(x, y, 
-                      alpha = 1, 
-                      lambda = exp(seq(5, -5, length = 1000)),
-                      family = "binomial")
-cv.lasso$lambda.min
-coef = predict(cv.lasso, s = "lambda.min", type = "coefficients")
-lasso.pred = predict(cv.lasso, newx = as.matrix(testData[2:12]), s = "lambda.min", type = "response")
+model.lasso <- train(x, y,
+                   method = "glmnet",
+                   tuneGrid = expand.grid(alpha = 1, 
+                                          lambda = exp(seq(5, -5, length=1000))),
+                   trControl = ctrl)
+plot(model.lasso, xTrans = log)
+model.lasso$bestTune
+coef = coef(model.lasso$finalModel, model.lasso$bestTune$lambda)
+lasso.pred = predict(model.lasso, newdata = testData, s = "lambda.min", type = "prob")[,2]
 roc.lasso <- roc(testData$diagnosis, lasso.pred)
 roc.lasso$auc
 plot(roc.lasso, legacy.axes = TRUE, print.auc = TRUE)
 legend("bottomright", legend = "LASSO") 
 ```
-  For this LASSO regression model, the optimal tuning parameter being selected is 0.0067. We picked this value by setting a tuning grid from exp(5) to exp(-5). In this model, the parameters of the mean of symmetry and the worst of smoothness have been reduced to 0. Besides, the AUC is 0.9202.        
-  For one unit increase in the mean of smoothness, there is an exp(58.797) increase in the odds ratio. For one unit increase in the standard error of symmetry, the is an exp(-96.616) decrease in the odds ratio. For one unit increase in the standard error of fractal dimension, the odds ratio decreases by exp(-287.63). For one unit increase in the standard error of concave points, the odds ratio increases by exp(319.33). Thus, we can conclude the standard error of concave points and the standard error of fractal dimension are the two most important variables.
+  For this LASSO regression model, the optimal tuning parameter being selected is 0.00745. We picked this value by setting a tuning grid from exp(5) to exp(-5). In this model, the parameters of the mean of symmetry and the worst of smoothness have been reduced to 0. Besides, the AUC is 0.9209.        
+  For one unit increase in the mean of smoothness, there is an exp(57.98) increase in the odds ratio. For one unit increase in the standard error of symmetry, the is an exp(-93.36) decrease in the odds ratio. For one unit increase in the standard error of fractal dimension, the odds ratio decreases by exp(-287.63). For one unit increase in the standard error of concave points, the odds ratio increases by exp(309.52). Thus, we can conclude the standard error of concave points and the standard error of fractal dimension are the two most important variables.
 
 ### KNN 
 ```{r}
 set.seed(2021)
-ctrl <- trainControl(method = "cv",
-                     summaryFunction = twoClassSummary,
-                     classProbs = TRUE)
 model.knn <- train(x = bc[indexTrain,2:12],
                    y = bc$diagnosis[indexTrain],
                    method = "knn",
@@ -369,12 +371,23 @@ Since 'fractal_dimension_se' and 'concave.points_se' are the two most important 
 
 ```{r}
 set.seed(2021)
-lda = lda(diagnosis ~., data = bc)
-plot(lda)
-predict_lda = predict(lda, newdata = testData, type = "prob")
-roc_lda = roc(testData$diagnosis, predict_lda$posterior[,2])
+model.lda <- train(diagnosis ~.,
+                   trainData,
+                   method = "lda",
+                   metric = "ROC",
+                   trControl = ctrl)
+plot(lda(diagnosis ~., data = trainData))
+predict_lda = predict(model.lda, newdata = testData, type = "prob")[,2]
+roc_lda <- roc(testData$diagnosis, predict_lda)
 roc_lda$auc
 plot(roc_lda, legacy.axes = TRUE, print.auc = TRUE)
 legend("bottomright", legend = "LDA")
 ```
 The area under the ROC curve is 0.936.    
+
+## Model Selection  
+
+```{r}
+summary(resamples(list(Elastic_net = model.glmn, KNN = model.knn, MARS = tuned_mars, RF = rf.fit, SVM = svmr.fit, LDA = model.lda, LASSO = model.lasso)))
+```
+
