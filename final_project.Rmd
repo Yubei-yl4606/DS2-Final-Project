@@ -136,6 +136,19 @@ glm.fit <- glm(diagnosis ~ .,
                family = binomial(link = "logit"))
 ```
 
+```{r, warning=FALSE}
+# Using caret for further CV model comparison
+ctrl <- trainControl(method = "cv",
+                     summaryFunction = twoClassSummary,
+                     classProbs = TRUE)
+set.seed(2021)
+model.glm <- train(x = trainData[2:12],
+                    y = trainData$diagnosis,
+                    method = "glm",
+                    metric = "ROC",
+                    trControl = ctrl)
+```
+
 ```{r}
 # check assumption of linear relationship between predictors and log odds/logit values）
 
@@ -171,6 +184,16 @@ confusionMatrix(data = as.factor(test.pred1),
 
 For testing data, confusion matrix gives us an accuracy of 87.61%. The p-value of accuracy greater than no information rate is almost zero(3.585e-09), thus the model is useful. Specificity(91.55%) is greater than sensitivity(80.95%). However, since data contains eleven predictors which is too many, we use regularization approach which help shrinkage unimportant coefficients by lambda, thus penalizes large number of predictors.
 
+```{r}
+# test data AUC
+glm.pred = predict(model.glm, newdata = testData, type = "prob")[,2]
+roc.glm <- roc(testData$diagnosis, glm.pred)
+roc.glm$auc
+plot(roc.glm, legacy.axes = TRUE, print.auc = TRUE)
+```
+
+For testing data, area under the curve is 0.9195.
+
 ### Logistic regression with penalization (elastic net regularization)
 ```{r}
 ctrl <- trainControl(method = "cv",
@@ -190,12 +213,12 @@ plot(model.glmn, xTrans = function(x) log(x))
 glmn.pred = predict(model.glmn, newdata = testData, type = "prob")[,2]
 roc.glmn <- roc(testData$diagnosis, glmn.pred)
 roc.glmn$auc
+plot(roc.glmn, legacy.axes = TRUE, print.auc = TRUE)
 ```
 
 ```{r}
 model.glmn$bestTune
 ```
-For this penalized logistic regression model, the optimal tuning parameter being selected is 0.002.  I picked this value by setting a tuning grid from exp(-12) to exp(-2) and then uses cross validation to get the parameter which gives the optimal ROC curve.
 
 For testing data, the area under ROC curve is 0.9202. The coefficients of predictors below provide us some information on how predictors affect the outcome variable: malignant or not.
 
@@ -388,6 +411,6 @@ The area under the ROC curve is 0.936.
 ## Model Selection  
 
 ```{r}
-summary(resamples(list(Elastic_net = model.glmn, KNN = model.knn, MARS = tuned_mars, RF = rf.fit, SVM = svmr.fit, LDA = model.lda, LASSO = model.lasso)))
+summary(resamples(list(GLM = model.glm, Elastic_net = model.glmn, KNN = model.knn, MARS = tuned_mars, RF = rf.fit, SVM = svmr.fit, LDA = model.lda, LASSO = model.lasso)))
 ```
 
